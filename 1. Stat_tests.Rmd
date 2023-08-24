@@ -1,0 +1,347 @@
+---
+title: "Task 1"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r}
+library(dplyr)
+library(lattice)
+library(moments)
+library(tidyr)
+library(GGally)
+set.seed(2)
+```
+
+## 1. Выбор данных
+https://www.kaggle.com/shivam2503/diamonds
+
+## 2. Считывание и просмотр
+```{r}
+df <- read.csv("diamonds.csv", header = TRUE, as.is = FALSE)
+df <- sample_n(df, 1000)
+head(df)
+```
+
+## 3. Описание данных
+Этот классический набор данных содержит цены и другие атрибуты почти 54 000 бриллиантов.
+
+X— индекс
+
+carat— вес бриллианта в каратах
+
+cut— качество огранки  
+
+color— цвет бриллианта
+
+clarity— включения в бриллианта- чистота
+
+depth— относительная глубина, =2z/(x+y)
+
+table— относительный размер вершины брилианта
+
+price— цена
+
+x— длина
+
+y— ширина
+
+z— высота
+
+## 4. Типы признаков
+X— порядковый
+
+carat— количественные (дискретный признак, мода встречается 2604 раза)
+
+cut— качественные
+
+color— качественные
+
+clarity— качественные
+
+depth— количественные (дискретный признак, мода встречается 2239 раза)
+
+table— количественные (дискретный признак, мода встречается 9881 раза)
+
+price— количественные (ближе к непрерывному признаку, мода встречается 132 раза)
+
+x— количественные (дискретный признак, мода встречается 448 раза)
+
+y— количественные (дискретный признак, мода встречается 437 раза)
+
+z— количественные (дискретный признак, мода встречается 767 раза)
+
+```{r}
+summarize(df, across(carat:z, function(x) max(table(x))))
+```
+
+## 5. Порядковые признаки
+Здесь необходимо проверить соответствие текстовых меток порядкового признака (если такие использованы) их естественному порядку.   
+В данном датасете таких признаков нет.
+
+## 6. Matrix plot, outliers, etc.
+```{r}
+ggpairs(df, title="correlogram", columns=c(2,6:11), upper = list(continuous = "points"), diag = list(continuous = "barDiag"))
+```
+
+Наблюдаются outliers почти на всех скатерплотах. Удалим некторые слишком выделяющиеся значения, которые могут являться ошибками в данных.
+
+```{r}
+dfo <- df
+dfo[rownames(dfo)[dfo$x == 0 | dfo$z == 0 | dfo$table > 90 | dfo$z > 30 | dfo$y > 30 ],] <- NA
+ggpairs(dfo, title="correlogram", columns=c(2,6:11), diag = list(continuous = "barDiag"))
+```
+
+## 7. Симметричность распределений.
+Из matrixplot видно, что распределение carat, price, x, y, z - сильно несимметричное с хвостом вправо, поэтому прологарифмируем его и построим заново матрикс плот.
+
+```{r}
+dfol <- transform(dfo, price=log(price), carat=log(carat), x=log(x), y=log(y), z=log(z))
+names(dfol)[names(dfol) == 'price'] <- 'log_price'
+names(dfol)[names(dfol) == 'carat'] <- 'log_carat'
+names(dfol)[names(dfol) == 'x'] <- 'log_x'
+names(dfol)[names(dfol) == 'y'] <- 'log_y'
+names(dfol)[names(dfol) == 'z'] <- 'log_z'
+ggpairs(dfol, title="correlogram", columns=c(2,6:11), diag = list(continuous = "barDiag"))
+```
+
+Распределения стали симметричнее, а зависимости более линейными.
+
+## 8. Аутлаеры
+Наибольшая линейная зависимость наблюдается между carat, x; carat, y; carat, z; x, y; x, z; y, z. Наименьшая- price, depth; x, depth; y, depth; z, depth. Удалим значения, которые могут быть особыми индивидами.
+
+```{r}
+dfolo <- na.omit(dfol)
+dfolo[rownames(dfolo)[dfolo$table > 65 | dfolo$table < 50 | dfolo$depth > 65 | dfolo$depth < 60 | dfolo$log_z < 0.5],] <- NA
+ggpairs(dfolo, title="correlogram", columns=c(2,6:11), diag = list(continuous = "barDiag"))
+```
+
+## 10. Раскраска по категориальным признакам
+Cut
+```{r}
+ggpairs(dfolo, columns=c(2,6:8), ggplot2::aes(colour=cut), diag = list(continuous = "barDiag"))
+```
+
+Color
+```{r}
+ggpairs(dfolo, columns=c(2,6:8), ggplot2::aes(colour=color), diag = list(continuous = "barDiag"))
+```
+
+Clarity
+```{r}
+ggpairs(dfolo, columns=c(2,6:8), ggplot2::aes(colour=clarity), diag = list(continuous = "barDiag"))
+```
+
+Не было выявлено неоднородностей.
+
+## 11. Descriptive statistics
+```{r}
+summary(dfo[-1])
+summary(na.omit(dfolo[-1]))
+summarize(na.omit(dfolo[-1]), across(c(log_carat, depth:log_z), list(kurtosis = kurtosis, skewness = skewness)))
+```
+
+kurtosis и skewness не равен 0 ни у одного признака, можно предположить, что выборки не из нормального распределения, позже это будет проверено при помощи теста Шапиро-Уилка. 
+
+У прологорифмированных признаков медиана и математическое ожидание стали ближе. Квартили, а также min, max графически изображены при помощи Boxplot и рассмотрены в пункте 2.2.
+
+## 2.1 Выбор категоризующей переменной
+В качестве категоризующего признака возьмем cut. Сравнивать будем Ideal и Premium, как имеющие наибольшее количество наблюдений.
+
+```{r}
+library(ppcor) #Библиотека, позволяющая проверять гипотезы о значимости коэффициента частной корреляции.
+library(Hmisc) #Библиотека, позволяющая строить корреляционные матрицы вместе с матрицами соответствующих p-value теста о значимости коэффициента корреляции.
+library(ggpubr)
+```
+
+## 2.2 Boxplot
+
+```{r}
+dfcomp <- dfolo %>% filter(cut == "Ideal" | cut == "Premium")
+dfcomp$cut <- droplevels(dfcomp$cut)
+bwplot(log_carat ~ cut, data = dfcomp, col = c("forestgreen", "gold"), main = "log_carat", xlab = "cut")
+
+bwplot(depth ~ cut, data = dfcomp, col = c("forestgreen", "gold"), main = "depth", xlab = "cut")
+
+bwplot(table ~ cut, data = dfcomp, col = c("forestgreen", "gold"), main = "table", xlab = "cut")
+```
+
+На boxplot признака log_carat: Примерно равный разброс, но у Premium медиана больше.
+
+На boxplot признака depth: Примерно равные медианы, но у Premium больше разброс, наблюдается несколько outliers.
+
+На boxplot признака table: Примерно равный разброс, но у Premium медиана больше, наблюдается несколько outliers.
+
+## 2.3 Нормальность признаков
+
+$\left\{ \left(x_{i},cdf_{0}^{-1}\left(\widehat{cdf}_{n}(x_{i})+\frac{1}{2n}\right)\right)\right\} _{i=1}^{n}.$
+
+Частный случай Q-Q plot для $cdf_{0}^{-1}=cdf_{N(0,1)}^{-1}$ называется normal probability plot.
+
+Если $\hat{P}_{n}->P_{\xi}$, то оба графика будут стремиться
+к $y=x$. Референсной прямой normal probability plot будет $y=\sqrt{\widehat{D\xi}}\cdot x+\widehat{E\xi}$.
+
+Тест Шапиро-Уилка проверяет нулевую гипотезу о том, что выборка из нормального распределения  
+
+```{r}
+ggqqplot(subset(dfcomp, cut == "Ideal")$log_carat, ylab = "log_carat")
+ggqqplot(subset(dfcomp, cut == "Ideal")$depth, ylab = "depth")
+ggqqplot(subset(dfcomp, cut == "Ideal")$table, ylab = "table")
+
+shapiro.test(subset(dfcomp, cut == "Ideal")$log_carat)
+shapiro.test(subset(dfcomp, cut == "Ideal")$depth)
+shapiro.test(subset(dfcomp, cut == "Ideal")$table)
+
+#Далее, аналогично для другого качества огранки
+
+ggqqplot(subset(dfcomp, cut == "Premium")$log_carat, ylab = "log_carat")
+ggqqplot(subset(dfcomp, cut == "Premium")$depth, ylab = "depth")
+ggqqplot(subset(dfcomp, cut == "Premium")$table, ylab = "table")
+
+shapiro.test(subset(dfcomp, cut == "Premium")$log_carat)
+shapiro.test(subset(dfcomp, cut == "Premium")$depth)
+shapiro.test(subset(dfcomp, cut == "Premium")$table)
+```
+
+Гипотеза о нормальности распределения отвергается как при оценке p-value, так и при рассмотрение Q-Q plot. Так же на Q-Q plot можно заметить дискретность распределений, особенно у table.
+
+## 2.4 t-test, критерий Манна-Уитни
+
+Двухвыборочный $t$-критерий:
+
+$H_{0}:E\xi_{1}=E\xi_{2}$.
+
+$t=\frac{\bar{x}-\bar{y}}{\sqrt{D(\bar{x}-\bar{y})}}\xrightarrow{\sim}N(0,1).$
+
+t-test более мощный против гипотезы о разных математических ожиданиях, а тест wilcox имеет большую устойчивость, так как является ранговым тестом и он проигнорирует выбросы.
+
+```{r}
+t.test(log_carat ~ cut, data = dfcomp)
+t.test(depth ~ cut, data = dfcomp)
+t.test(table ~ cut, data = dfcomp)
+
+wilcox.test(log_carat ~ cut, data = dfcomp)
+wilcox.test(depth ~ cut, data = dfcomp)
+wilcox.test(table ~ cut, data = dfcomp)
+```
+
+Гипотеза о равенстве средних отвергается для всех подвыборок по cut.
+
+## 2.5 Критерий Колмогорова-Смирнова
+
+Рассматривается $H_{0}:P_{\xi_{1}}=P_{\xi_{2}}$ против $H_{1}:P_{\xi_{1}}\neq P_{\xi_{2}}$
+и оба распределения абсолютно непрерывны. В качестве статистики используется
+$D=\sup_{x}\left|\widehat{cdf}_{\xi_{1}}(x)-\widehat{cdf}_{\xi_{2}}(x)\right|.$
+
+Критерий Колмогорова-Смирнова применим для непрерывных признаков, поэтому исключим из рассмотрения table
+
+```{r}
+ks.test(dfcomp[dfcomp$cut == "Ideal", 2], dfcomp[dfcomp$cut == "Premium", 2]) 
+ks.test(dfcomp[dfcomp$cut == "Ideal", 6], dfcomp[dfcomp$cut == "Premium", 6]) 
+```
+
+Гипотезы о равенстве распределений отвергаются.
+
+## 3.1 Анализ зависимостей по группе.
+Посмотрим на матрикс плот данных.
+
+Cut
+```{r}
+ggpairs(dfolo, columns=c(2,6:8), ggplot2::aes(colour=dfolo$cut), diag = list(continuous = "barDiag"))
+```
+
+Color
+```{r}
+ggpairs(dfolo, columns=c(2,6:8), ggplot2::aes(colour=color), diag = list(continuous = "barDiag"))
+```
+
+Clarity
+```{r}
+ggpairs(dfolo, columns=c(2,6:8), ggplot2::aes(colour=clarity), diag = list(continuous = "barDiag"))
+```
+
+Корреляция Пирсона измеряет линейную зависимость между двумя переменными (x и y).
+
+Мера линейной зависимости между случайным величинами $\xi$ и $\eta$ есть коэффициент корреляции Пирсона $\rho=\frac{cov(\xi,\eta)}{\sqrt{D\xi}\sqrt{D\eta}}.$
+
+## 3.2 Коэффициент корреляции Пирсона.
+
+```{r}
+cor.test( ~ log_carat + depth, data = dfolo, subset = cut == "Ideal", method = "pearson") #Считает коэффициент корреляции Спирмена между двумя столбцами матрицы.
+
+cor.test( ~ depth + table, data = dfolo, subset = cut == "Ideal", method = "pearson")
+
+cor.test( ~ table + log_carat, data = dfolo, subset = cut == "Ideal", method = "pearson")
+
+rcorr(as.matrix(subset(dfolo, cut == 'Ideal', select=c(log_carat, depth, table))), type = "pearson")
+
+cor.test( ~ log_carat + depth, data = dfolo, subset = cut == "Premium", method = "pearson") #Считает коэффициент корреляции Пирсона между двумя столбцами матрицы.
+
+cor.test( ~ depth + table, data = dfolo, subset = cut == "Premium", method = "pearson")
+
+cor.test( ~ table + log_carat, data = dfolo, subset = cut == "Premium", method = "pearson")
+
+rcorr(as.matrix(subset(dfolo, cut == 'Premium', select=c(log_carat, depth, table))), type = "pearson")
+```
+
+Не отвергается гипотеза о том, что корреляция = 0 между log_carat and depth для подвыборки cut == "Ideal", log_carat and depth для подвыборки cut == "Premium" и table and log_carat для подвыборки cut == "Premium". Значения коэффициента корреляции приведены в таблицах.
+
+## 3.3 Коэффициент корреляции Спирмена
+
+Выборочный коэффициент Спирмана:
+$\hat{\rho}_{S}=\frac{1/n\cdot\sum_{i=1}^{n}R_{i}T_{i}-\bar{R}\bar{T}}{\sqrt{1/n\cdot\sum_{i=1}^{n}\left(R_{i}-\bar{R}\right)^{2}}\sqrt{1/n\cdot\sum_{i=1}^{n}\left(T_{i}-\bar{T}\right)^{2}}}.$
+
+Если нет повторяющихся наблюдений, то знаменатель будет одним и тем же у всех выборок объема $n$, значит его можно посчитать заранее. В этом (и только этом) случае, справедлива более простая формула: $\hat{\rho}_{S}=1-\frac{6\sum_{i=1}^{n}(R_{i}-T_{i})^{2}}{n^{3}-n}.$
+
+Коэффициент корреляции Спирмена являеется ранговым и соответсвенно устойчивым к выбросам. В случае если распределение нормальное коэффициент Спирмена и коэффициент Пирсона измеряют одно и то же.
+
+```{r}
+ #Считает коэффициент корреляции Спирмена между двумя столбцами матрицы.
+
+cor.test( ~ depth + table, data = dfolo, subset = cut == "Ideal", method = "spearman")
+
+cor.test( ~ table + log_carat, data = dfolo, subset = cut == "Ideal", method = "spearman")
+
+rcorr(as.matrix(subset(dfolo, cut == 'Ideal', select=c(log_carat, depth, table))), type = "spearman")
+
+cor.test( ~ log_carat + depth, data = dfolo, subset = cut == "Premium", method = "spearman") #Считает коэффициент корреляции Спирмена между двумя столбцами матрицы.
+
+cor.test( ~ depth + table, data = dfolo, subset = cut == "Premium", method = "spearman")
+
+cor.test( ~ table + log_carat, data = dfolo, subset = cut == "Premium", method = "spearman")
+
+rcorr(as.matrix(subset(dfolo, cut == 'Premium', select=c(log_carat, depth, table))), type = "spearman")
+```
+
+Не отвергается гипотеза о том, что корреляция = 0 между log_carat and depth для подвыборки cut == "Ideal", log_carat and depth для подвыборки cut == "Premium" и table and log_carat для подвыборки cut == "Premium". Значения коэффициента корреляции приведены в таблицах.
+
+Предложим, что вес в каратах является внешним фактором, влияющим на корреляцию между table и depth. Для проверки этого предположения посмотрим на коэффициент частной корреляции.
+
+## 3.4 Причины, следствия и частные корреляции.
+
+```{r}
+cor.test( ~ table + depth, data = dfolo, subset = cut == "Ideal", method = "pearson")
+
+cor.test( ~ table + depth, data = dfolo, subset = cut == "Premium", method = "pearson")
+
+dft <- subset(dfolo, cut == "Ideal")
+pcor.test(dft$depth, dft$table, dft$log_carat, method = "pearson") #Смотрим на проверку гипотезы о значимости коэффициента частной корреляции
+dfpart <- na.omit(subset(dfolo, cut == "Premium"))
+pcor.test(dfpart$depth, dfpart$table, dfpart$log_carat, method = "pearson")
+```
+
+Значение коэффициента частной корреляции слабо отличается от исходного коэффициента, можно сделать вывод, что корреляция между table и depth обеспечена внутренними связями между признаками, это поддтверждается и значениями p-value.
+
+
+
+
+
+
+
+
+
+
+
